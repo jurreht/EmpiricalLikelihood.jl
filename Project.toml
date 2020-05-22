@@ -1,0 +1,4 @@
+name = "EmpiricalLikelihood"
+uuid = "326db075-9d66-4e09-b6e7-92f810f0b8a8"
+authors = ["Jurre Thiel <3878745+jurreht@users.noreply.github.com>"]
+version = "0.1.0"
