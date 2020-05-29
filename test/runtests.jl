@@ -33,7 +33,7 @@ end
         ϵ = rand(Normal(), n)
         u = ϵ .* @. sqrt(.1 .+ .2 * X .+ .3 * X.^2)
         y = β[1] .+ X * β[2] .+ u
-        model = setup_jump_problem(1, het_moment, reshape(X, n, 1), reshape(y, n, 1), β, .35)
+        model = setup_jump_problem(1, het_moment, reshape(X, n, 1), reshape(y, n, 1), β, .35)[1]
         set_optimizer(model, optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0))
         optimize!(model)
         β_test[rep, :] = @. value(model[:theta])

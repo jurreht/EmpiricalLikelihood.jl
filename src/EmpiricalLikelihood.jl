@@ -45,11 +45,11 @@ function optimize_el(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matrix{T}, s
     return Optim.minimizer(res), -1 * Optim.minimum(res)
 end
 
-function setup_jump_problem(n_moments::Int, moment_func, X::Matrix{T}, Y::Matrix{T}, start_param::Vector{T}, bandwidth::T, trimming::T=.99999)::Model where T <: AbstractFloat
+function setup_jump_problem(n_moments::Int, moment_func, X::Matrix{T}, Y::Matrix{T}, start_param::Vector{T}, bandwidth::T, trimming::T=.99999) where T <: AbstractFloat
     return setup_jump_problem(convert(UInt, n_moments), moment_func, X, Y, start_param, bandwidth, trimming)
 end
 
-function setup_jump_problem(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matrix{T}, start_param::Vector{T}, bandwidth::T, trimming::T=.99999)::Model where T <: AbstractFloat
+function setup_jump_problem(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matrix{T}, start_param::Vector{T}, bandwidth::T, trimming::T=.99999) where T <: AbstractFloat
     weights, not_trimmed = weights_and_trims(n_moments, moment_func, X, Y, start_param, bandwidth, trimming)
 
     model = Model()
@@ -69,7 +69,7 @@ function setup_jump_problem(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matri
     register(model, :neg_empirical_likelihood, n_params, neg_ll, ∇neg_ll)
     @NLobjective(model, Min, neg_empirical_likelihood(theta...))
 
-    return model
+    return model, neg_ll, ∇neg_ll
 end
 
 function weights_and_trims(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matrix{T}, start_param::Vector{T}, bandwidth::T, trimming::T)::Tuple{Matrix{T}, Vector{Bool}} where T <: AbstractFloat
