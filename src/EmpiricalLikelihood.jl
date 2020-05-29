@@ -2,11 +2,12 @@ module EmpiricalLikelihood
 
 using DiffResults
 using ForwardDiff
-using HigherOrderKernels
 using JuMP
 using Optim
 using PyCall
 using Statistics
+
+include("HigherOrderKernels.jl")
 
 const scipy_spatial = PyNULL()
 
@@ -79,7 +80,7 @@ function weights_and_trims(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matrix
     for i in 1:n_obs
         for j in 1:n_obs
             weights[i, j] = prod(
-                HigherOrderKernels.density_kernel(Kernel, (X[i, k] - X[j, k]) / bandwidth)
+                density_kernel(Kernel, (X[i, k] - X[j, k]) / bandwidth)
                 for k in 1:n_conditioning_vars
             )
         end
