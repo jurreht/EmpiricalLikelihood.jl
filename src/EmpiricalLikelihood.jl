@@ -3,6 +3,7 @@ module EmpiricalLikelihood
 using DiffResults
 using ForwardDiff
 using HigherOrderKernels
+using JuMP
 using Optim
 using PyCall
 using Statistics
@@ -13,7 +14,7 @@ function __init__()
     copy!(scipy_spatial, pyimport_conda("scipy.spatial", "scipy"))
 end
 
-export optimize_el
+export optimize_el, setup_jump_problem
 
 const Kernel = EpanechnikovKernel{2}
 
@@ -32,6 +33,45 @@ function optimize_el(n_moments::Int, moment_func, X::Matrix{T}, Y::Matrix{T}, st
 end
 
 function optimize_el(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matrix{T}, start_param::Vector{T}, bandwidth::T, trimming::T=.99999)::Tuple{Vector{T}, T} where T <: AbstractFloat
+    weights, not_trimmed = weights_and_trims(n_moments, moment_func, X, Y, start_param, bandwidth, trimming)
+
+    res = Optim.optimize(
+        Optim.only_fg!((f, g, x) -> el_objective!(n_moments, moment_func, X, Y, weights, not_trimmed, x, f, g)),
+        start_param,
+        LBFGS()
+    )
+
+    return Optim.minimizer(res), -1 * Optim.minimum(res)
+end
+
+function setup_jump_problem(n_moments::Int, moment_func, X::Matrix{T}, Y::Matrix{T}, start_param::Vector{T}, bandwidth::T, trimming::T=.99999)::Model where T <: AbstractFloat
+    return setup_jump_problem(convert(UInt, n_moments), moment_func, X, Y, start_param, bandwidth, trimming)
+end
+
+function setup_jump_problem(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matrix{T}, start_param::Vector{T}, bandwidth::T, trimming::T=.99999)::Model where T <: AbstractFloat
+    weights, not_trimmed = weights_and_trims(n_moments, moment_func, X, Y, start_param, bandwidth, trimming)
+
+    model = Model()
+    n_params = length(start_param)
+    @variable(model, theta[1:n_params])
+    for i in 1:n_params
+        set_start_value(theta[i], start_param[i])
+    end
+    neg_ll(x...) = begin
+        x_vec = vcat(x...)
+        el_objective!(n_moments, moment_func, X, Y, weights, not_trimmed, x_vec, 1, nothing)
+    end
+    ∇neg_ll(grad, x...) = begin
+        x_vec = vcat(x...)
+        el_objective!(n_moments, moment_func, X, Y, weights, not_trimmed, x_vec, nothing, grad)
+    end
+    register(model, :neg_empirical_likelihood, n_params, neg_ll, ∇neg_ll)
+    @NLobjective(model, Min, neg_empirical_likelihood(theta...))
+
+    return model
+end
+
+function weights_and_trims(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matrix{T}, start_param::Vector{T}, bandwidth::T, trimming::T)::Tuple{Matrix{T}, Vector{Bool}} where T <: AbstractFloat
     # Calcualte weights
     n_obs, n_conditioning_vars = size(X)
     weights = Matrix{T}(undef, n_obs, n_obs)
@@ -57,22 +97,20 @@ function optimize_el(n_moments::UInt, moment_func, X::Matrix{T}, Y::Matrix{T}, s
         weights[i, :] ./= sum(weights[i, :])
     end
 
+    if !any(not_trimmed)
+        throw("All observations are trimmed. Decrease the bandwith or increase the trimming parameter.")
+    end
+
     # Check if starting paramater is valid
     moment_vals, _ = moment_vals_and_jac(n_moments, moment_func, X, Y, start_param)
     if !zero_in_hull_for_all(moment_vals, weights, not_trimmed)
         throw("Zero is not in convex hull of moments at starting value. Try a different starting value or increase the bandwidth.")
     end
 
-    res = Optim.optimize(
-        Optim.only_fg!((f, g, x) -> el_objective!(n_moments, moment_func, X, Y, weights, not_trimmed, x, f, g)),
-        start_param,
-        LBFGS()
-    )
-
-    return Optim.minimizer(res), -1 * Optim.minimum(res)
+    return weights, not_trimmed
 end
 
-function el_objective!(n_moments::UInt, moment_func, X::Matrix{S}, Y::Matrix{S}, weights::Matrix{S}, not_trimmed::Vector{Bool}, theta::Vector{T}, out, grad::Union{Nothing, Vector{S}})::T where {T <: Real, S <: AbstractFloat}
+function el_objective!(n_moments::UInt, moment_func, X::Matrix{S}, Y::Matrix{S}, weights::Matrix{S}, not_trimmed::Vector{Bool}, theta::Vector{T}, out, grad::Union{Nothing, AbstractVector{S}})::Union{Nothing, T} where {T <: Real, S <: AbstractFloat}
     moment_vals, moment_jac = moment_vals_and_jac(n_moments, moment_func, X, Y, theta)
 
     if !zero_in_hull_for_all(moment_vals, weights, not_trimmed)
