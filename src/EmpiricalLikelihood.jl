@@ -200,7 +200,7 @@ function zero_in_hull(moments)
     end
     # Based on https://stackoverflow.com/a/16898636/7388096
     hull = scipy_spatial.Delaunay(moments)
-    return hull.find_simplex(zeros(size(moments, 2))) >= 0
+    return hull.find_simplex(zeros(size(moments, 2))) .>= 0
 end
 
 function λ_obj_fgh(f, grad, hess, γ, moment_vals, weights)
